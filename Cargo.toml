@@ -1,0 +1,23 @@
+[package]
+name = "dosu-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Korosh Mirhajian"]
+license = "MIT"
+repository = "https://github.com/RustNegar/dosu-core"
+description = "Core engine of the Rastnegar (RustNegar) project: PTY handling, terminal-state grid, bidi reordering, diff-based renderer."
+
+[dependencies]
+# PTY handling
+portable-pty = "0.8"
+# Terminal escape-sequence / VT parser (same engine used by Alacritty)
+vte = "0.13"
+# Unicode bidi algorithm (UAX #9)
+unicode-bidi = "0.3"
+# Unicode general category / joining-type data for Arabic/Persian shaping
+unicode-properties = "0.1"
+# Error handling
+anyhow = "1"
+# Config parsing
+serde = { version = "1", features = ["derive"] }
+toml = "0.5"
