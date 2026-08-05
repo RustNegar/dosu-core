@@ -24,9 +24,20 @@ pub struct Renderer {
     is_first_render: bool,
 }
 
+impl Default for Renderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Renderer {
     pub fn new() -> Self {
-        Renderer { last: None, is_first_render: true, row_offset: 0, real_terminal_rows: 0 }
+        Renderer {
+            last: None,
+            is_first_render: true,
+            row_offset: 0,
+            real_terminal_rows: 0,
+        }
     }
 
     /// Sets `row_offset` and the fixed real terminal row count. Call once
@@ -283,7 +294,12 @@ mod tests {
     use crate::grid::feed;
 
     fn line_text(g: &Grid, r: usize) -> String {
-        g.row(r).iter().map(|c| c.ch).collect::<String>().trim_end().to_string()
+        g.row(r)
+            .iter()
+            .map(|c| c.ch)
+            .collect::<String>()
+            .trim_end()
+            .to_string()
     }
 
     #[test]
@@ -307,7 +323,10 @@ mod tests {
         // should be written at most once.
         for line in ["four", "five", "six"] {
             let count = stream.matches(line).count();
-            assert!(count <= 1, "'{line}' was (re)written {count} times, expected at most 1");
+            assert!(
+                count <= 1,
+                "'{line}' was (re)written {count} times, expected at most 1"
+            );
         }
 
         // Visible content must still end up as the last 5 surviving lines.
@@ -372,7 +391,11 @@ mod tests {
 
         // Populate the grid, render once so `last` is trusted, then
         // mirror that output onto the simulated real terminal.
-        feed(&mut parser, &mut grid, b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
+        feed(
+            &mut parser,
+            &mut grid,
+            b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix",
+        );
         renderer.render(&grid, &mut out, 0).unwrap();
         feed(&mut real_parser, &mut real_sim, &out);
 
@@ -411,8 +434,14 @@ mod tests {
         renderer.render(&grid, &mut out, 0).unwrap();
 
         let s = String::from_utf8_lossy(&out);
-        assert!(s.contains("\x1b[6;1H"), "row 0 content must be written at real row 6 (offset 5 + 1), got: {s:?}");
-        assert!(!s.contains("\x1b[1;1H"), "must never address the terminal's absolute row 1 when offset, got: {s:?}");
+        assert!(
+            s.contains("\x1b[6;1H"),
+            "row 0 content must be written at real row 6 (offset 5 + 1), got: {s:?}"
+        );
+        assert!(
+            !s.contains("\x1b[1;1H"),
+            "must never address the terminal's absolute row 1 when offset, got: {s:?}"
+        );
     }
 
     #[test]

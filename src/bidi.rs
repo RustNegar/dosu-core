@@ -92,7 +92,8 @@ fn split_gutter_prefix(field: &[Cell]) -> usize {
             after_spaces += 1;
         }
         let has_space = after_spaces > digits_end;
-        let has_marker_next = after_spaces < field.len() && is_structural_marker(field[after_spaces].ch);
+        let has_marker_next =
+            after_spaces < field.len() && is_structural_marker(field[after_spaces].ch);
         if has_space || has_marker_next {
             // Covers both plain (`bat --style=numbers`, "1 ") and
             // bar-decorated ("1│") gutter styles.
@@ -198,7 +199,11 @@ pub fn reorder_row(cells: &[Cell], shaper: &dyn Shaper) -> (Vec<Cell>, Vec<usize
     let mut logical_to_visual: Vec<usize> = (0..cells.len()).collect();
 
     for field in split_fields(content) {
-        if field.is_empty() || !content[field.clone()].iter().any(|c| is_rtl_candidate(c.ch)) {
+        if field.is_empty()
+            || !content[field.clone()]
+                .iter()
+                .any(|c| is_rtl_candidate(c.ch))
+        {
             continue; // pure-LTR (or empty) field: nothing to reorder
         }
         // Peel off leading marker/gutter prefix and trailing marker suffix
@@ -207,7 +212,11 @@ pub fn reorder_row(cells: &[Cell], shaper: &dyn Shaper) -> (Vec<Cell>, Vec<usize
         let text_start = field.start + marker_len;
         let suffix_len = split_marker_suffix(&content[text_start..field.end]);
         let text_field = text_start..(field.end - suffix_len);
-        if text_field.is_empty() || !content[text_field.clone()].iter().any(|c| is_rtl_candidate(c.ch)) {
+        if text_field.is_empty()
+            || !content[text_field.clone()]
+                .iter()
+                .any(|c| is_rtl_candidate(c.ch))
+        {
             continue; // only markers (or nothing) left: no bidi needed
         }
         let (field_result, field_map) = reorder_field(&content[text_field.clone()], shaper);
@@ -231,7 +240,9 @@ pub fn reorder_row(cells: &[Cell], shaper: &dyn Shaper) -> (Vec<Cell>, Vec<usize
                 let marker_len = split_gutter_prefix(&content[last_field.clone()]);
                 let text_start = last_field.start + marker_len;
                 let text_field = text_start..last_field.end;
-                if !text_field.is_empty() && content[text_field].iter().any(|c| is_rtl_candidate(c.ch)) {
+                if !text_field.is_empty()
+                    && content[text_field].iter().any(|c| is_rtl_candidate(c.ch))
+                {
                     logical_to_visual[content_len] = text_start;
                 }
             }
@@ -365,10 +376,17 @@ fn reorder_logical_line(rows: &[&[Cell]], shaper: &dyn Shaper) -> Vec<(Vec<Cell>
     let infos: Vec<RowInfo> = rows
         .iter()
         .map(|cells| {
-            let content_len = cells.iter().rposition(|c| *c != Cell::default()).map_or(0, |i| i + 1);
+            let content_len = cells
+                .iter()
+                .rposition(|c| *c != Cell::default())
+                .map_or(0, |i| i + 1);
             let content = &cells[..content_len];
             let field = split_fields(content).into_iter().next().unwrap_or(0..0);
-            let marker_len = if field.is_empty() { 0 } else { split_gutter_prefix(&content[field.clone()]) };
+            let marker_len = if field.is_empty() {
+                0
+            } else {
+                split_gutter_prefix(&content[field.clone()])
+            };
             let text_start = field.start + marker_len;
             let suffix_len = if text_start >= field.end {
                 0
@@ -376,15 +394,24 @@ fn reorder_logical_line(rows: &[&[Cell]], shaper: &dyn Shaper) -> Vec<(Vec<Cell>
                 split_marker_suffix(&content[text_start..field.end])
             };
             let text_field = text_start..(field.end - suffix_len);
-            RowInfo { content_len, field, text_field }
+            RowInfo {
+                content_len,
+                field,
+                text_field,
+            }
         })
         .collect();
 
     let any_rtl = rows.iter().zip(&infos).any(|(cells, info)| {
-        cells[..info.content_len].iter().any(|c| is_rtl_candidate(c.ch))
+        cells[..info.content_len]
+            .iter()
+            .any(|c| is_rtl_candidate(c.ch))
     });
     if !any_rtl {
-        return rows.iter().map(|c| (c.to_vec(), (0..c.len()).collect())).collect();
+        return rows
+            .iter()
+            .map(|c| (c.to_vec(), (0..c.len()).collect()))
+            .collect();
     }
 
     // Join every row's post-marker text into one string, recording each
@@ -408,7 +435,12 @@ fn reorder_logical_line(rows: &[&[Cell]], shaper: &dyn Shaper) -> Vec<(Vec<Cell>
     let bidi_info = BidiInfo::new(&combined, None);
     let para = match bidi_info.paragraphs.first() {
         Some(p) => p,
-        None => return rows.iter().map(|c| (c.to_vec(), (0..c.len()).collect())).collect(),
+        None => {
+            return rows
+                .iter()
+                .map(|c| (c.to_vec(), (0..c.len()).collect()))
+                .collect()
+        }
     };
 
     let mut out = Vec::with_capacity(rows.len());
@@ -429,19 +461,22 @@ fn reorder_logical_line(rows: &[&[Cell]], shaper: &dyn Shaper) -> Vec<(Vec<Cell>
             );
             result[info.text_field.clone()].copy_from_slice(&field_result);
             for (local_i, &visual_local) in field_map.iter().enumerate() {
-                logical_to_visual[info.text_field.start + local_i] = info.text_field.start + visual_local;
+                logical_to_visual[info.text_field.start + local_i] =
+                    info.text_field.start + visual_local;
             }
         }
 
         // Only the last row in the group can have a cursor with trailing
         // blank padding (interior rows are always fully packed by DECAWM).
         // Same RTL cursor special case as `reorder_row`.
-        if i == rows.len() - 1 && info.content_len < cells.len() {
-            if info.field.end == info.content_len
-                && content[info.text_field.clone()].iter().any(|c| is_rtl_candidate(c.ch))
-            {
-                logical_to_visual[info.content_len] = info.text_field.start;
-            }
+        if i == rows.len() - 1
+            && info.content_len < cells.len()
+            && info.field.end == info.content_len
+            && content[info.text_field.clone()]
+                .iter()
+                .any(|c| is_rtl_candidate(c.ch))
+        {
+            logical_to_visual[info.content_len] = info.text_field.start;
         }
 
         let mut result_full = result;
@@ -493,8 +528,14 @@ mod tests {
         let close_idx = row.find(')');
         let dosu_idx = row.find("Dosu");
         assert!(open_idx.is_some() && close_idx.is_some() && dosu_idx.is_some());
-        assert!(open_idx.unwrap() < dosu_idx.unwrap(), "an opening paren must sit before Dosu, got {row:?}");
-        assert!(dosu_idx.unwrap() < close_idx.unwrap(), "a closing paren must sit after Dosu, got {row:?}");
+        assert!(
+            open_idx.unwrap() < dosu_idx.unwrap(),
+            "an opening paren must sit before Dosu, got {row:?}"
+        );
+        assert!(
+            dosu_idx.unwrap() < close_idx.unwrap(),
+            "a closing paren must sit after Dosu, got {row:?}"
+        );
     }
 
     #[test]
@@ -506,7 +547,10 @@ mod tests {
         feed(&mut parser, &mut grid, "سلام دنیا \u{2502}".as_bytes());
         let visual = reorder_grid(&grid, &NoopShaper);
         let row: String = visual.row(0).iter().map(|c| c.ch).collect();
-        assert!(row.trim_end().ends_with('\u{2502}'), "trailing border must stay fixed, got {row:?}");
+        assert!(
+            row.trim_end().ends_with('\u{2502}'),
+            "trailing border must stay fixed, got {row:?}"
+        );
     }
 
     #[test]
@@ -518,7 +562,10 @@ mod tests {
         feed(&mut parser, &mut grid, "   1 سلام".as_bytes());
         let visual = reorder_grid(&grid, &NoopShaper);
         let row: String = visual.row(0).iter().map(|c| c.ch).collect();
-        assert!(row.starts_with("   1 "), "gutter must stay fixed at the start, got {row:?}");
+        assert!(
+            row.starts_with("   1 "),
+            "gutter must stay fixed at the start, got {row:?}"
+        );
     }
 
     #[test]
@@ -529,7 +576,10 @@ mod tests {
         feed(&mut parser, &mut grid, "  12\u{2502}سلام دنیا".as_bytes());
         let visual = reorder_grid(&grid, &NoopShaper);
         let row: String = visual.row(0).iter().map(|c| c.ch).collect();
-        assert!(row.starts_with("  12\u{2502}"), "bar-style gutter must stay fixed, got {row:?}");
+        assert!(
+            row.starts_with("  12\u{2502}"),
+            "bar-style gutter must stay fixed, got {row:?}"
+        );
     }
 
     #[test]
@@ -562,7 +612,9 @@ mod tests {
 
         let visual = reorder_grid(&grid, &NoopShaper);
         let visual_row: String = visual.row(0).iter().map(|c| c.ch).collect();
-        let persian_pos = visual_row.find('م').expect("Persian text must still be present");
+        let persian_pos = visual_row
+            .find('م')
+            .expect("Persian text must still be present");
         assert!(persian_pos < 20, "Persian entry must stay near its original column (~2), got position {persian_pos} (row: {visual_row:?})");
         assert!(visual_row.contains("checksum = \"43d5b281e737544\""));
     }
@@ -577,7 +629,10 @@ mod tests {
         let mut grid = Grid::new(4, 3);
         let mut parser = vte::Parser::new();
         feed(&mut parser, &mut grid, "پنجABCشش".as_bytes());
-        assert!(grid.is_row_wrapped(1), "row1 must be recorded as an auto-wrap continuation of row0");
+        assert!(
+            grid.is_row_wrapped(1),
+            "row1 must be recorded as an auto-wrap continuation of row0"
+        );
 
         let visual = reorder_grid(&grid, &NoopShaper);
         let row1: String = visual.row(1).iter().map(|c| c.ch).collect();
@@ -629,8 +684,14 @@ mod tests {
         let mut parser = vte::Parser::new();
         feed(&mut parser, &mut grid, sentence.as_bytes());
 
-        assert!(grid.cursor.row >= 1, "sentence must be long enough to wrap past row 0");
-        assert!(grid.is_row_wrapped(1), "row1 must be a recorded auto-wrap continuation");
+        assert!(
+            grid.cursor.row >= 1,
+            "sentence must be long enough to wrap past row 0"
+        );
+        assert!(
+            grid.is_row_wrapped(1),
+            "row1 must be a recorded auto-wrap continuation"
+        );
 
         let visual = reorder_grid(&grid, &NoopShaper);
         let mut all_visual_chars: Vec<char> = Vec::new();
@@ -638,11 +699,17 @@ mod tests {
             all_visual_chars.extend(visual.row(r).iter().map(|c| c.ch));
         }
         let mut expected: Vec<char> = sentence.chars().collect();
-        let mut actual: Vec<char> = all_visual_chars.into_iter().filter(|&c| c != '\0' && c != ' ').collect();
+        let mut actual: Vec<char> = all_visual_chars
+            .into_iter()
+            .filter(|&c| c != '\0' && c != ' ')
+            .collect();
         expected.retain(|&c| c != ' ');
         expected.sort_unstable();
         actual.sort_unstable();
-        assert_eq!(actual, expected, "reordering must not drop, duplicate, or corrupt any character");
+        assert_eq!(
+            actual, expected,
+            "reordering must not drop, duplicate, or corrupt any character"
+        );
     }
 
     #[test]
@@ -670,7 +737,11 @@ mod tests {
         let mut parser = vte::Parser::new();
         feed(&mut parser, &mut grid, "❯ ".as_bytes());
         // Long enough to wrap onto a 2nd row.
-        feed(&mut parser, &mut grid, "این یک متن تست است که خیلی طولانی است".as_bytes());
+        feed(
+            &mut parser,
+            &mut grid,
+            "این یک متن تست است که خیلی طولانی است".as_bytes(),
+        );
         assert!(grid.is_row_wrapped(1));
 
         let visual = reorder_grid(&grid, &NoopShaper);
@@ -694,7 +765,10 @@ mod tests {
         let row: String = visual.row(0).iter().map(|c| c.ch).collect();
         // Both marker segments, in their original order, must still
         // lead the line -- untouched by reordering.
-        assert!(row.starts_with(" \u{eeed} \u{276f} "), "both marker segments must stay fixed at the front, got {row:?}");
+        assert!(
+            row.starts_with(" \u{eeed} \u{276f} "),
+            "both marker segments must stay fixed at the front, got {row:?}"
+        );
         // And the cursor must land right after them, not dragged into
         // the reordered Persian text.
         assert_eq!(visual.cursor.col, 5);
@@ -708,15 +782,21 @@ pub fn reorder_grid(grid: &crate::grid::Grid, shaper: &dyn Shaper) -> crate::gri
     let mut visual_cursor_col = grid.cursor.col;
 
     // Applies one row's reorder result to `out`, shared by every branch below.
-    let apply_row =
-        |out: &mut crate::grid::Grid, visual_cursor_col: &mut usize, row_idx: usize, visual: Vec<Cell>, logical_to_visual: &[usize]| {
-            if row_idx == grid.cursor.row {
-                *visual_cursor_col = logical_to_visual.get(grid.cursor.col).copied().unwrap_or(grid.cursor.col);
-            }
-            for (c, cell) in visual.into_iter().enumerate() {
-                out.set_cell(row_idx, c, cell);
-            }
-        };
+    let apply_row = |out: &mut crate::grid::Grid,
+                     visual_cursor_col: &mut usize,
+                     row_idx: usize,
+                     visual: Vec<Cell>,
+                     logical_to_visual: &[usize]| {
+        if row_idx == grid.cursor.row {
+            *visual_cursor_col = logical_to_visual
+                .get(grid.cursor.col)
+                .copied()
+                .unwrap_or(grid.cursor.col);
+        }
+        for (c, cell) in visual.into_iter().enumerate() {
+            out.set_cell(row_idx, c, cell);
+        }
+    };
 
     let mut r = 0;
     while r < grid.rows {
@@ -740,13 +820,22 @@ pub fn reorder_grid(grid: &crate::grid::Grid, shaper: &dyn Shaper) -> crate::gri
         // structured row ends a group.
         let group_start = r;
         let mut group_end = r + 1;
-        while group_end < grid.rows && grid.is_row_wrapped(group_end) && !grid.is_row_structured(group_end) {
+        while group_end < grid.rows
+            && grid.is_row_wrapped(group_end)
+            && !grid.is_row_structured(group_end)
+        {
             group_end += 1;
         }
 
         if group_end - group_start == 1 {
             let (visual, logical_to_visual) = reorder_row(grid.row(r), shaper);
-            apply_row(&mut out, &mut visual_cursor_col, r, visual, &logical_to_visual);
+            apply_row(
+                &mut out,
+                &mut visual_cursor_col,
+                r,
+                visual,
+                &logical_to_visual,
+            );
             r += 1;
             continue;
         }
@@ -760,21 +849,39 @@ pub fn reorder_grid(grid: &crate::grid::Grid, shaper: &dyn Shaper) -> crate::gri
         // back to reordering every row in the group independently --
         // the existing, already-correct per-row behavior.
         let has_multi_field_row = group_rows.iter().any(|cells| {
-            let content_len = cells.iter().rposition(|c| *c != Cell::default()).map_or(0, |i| i + 1);
+            let content_len = cells
+                .iter()
+                .rposition(|c| *c != Cell::default())
+                .map_or(0, |i| i + 1);
             split_fields(&cells[..content_len]).len() > 1
         });
 
         if has_multi_field_row {
             for row_idx in group_start..group_end {
                 let (visual, logical_to_visual) = reorder_row(grid.row(row_idx), shaper);
-                apply_row(&mut out, &mut visual_cursor_col, row_idx, visual, &logical_to_visual);
+                apply_row(
+                    &mut out,
+                    &mut visual_cursor_col,
+                    row_idx,
+                    visual,
+                    &logical_to_visual,
+                );
             }
             r = group_end;
             continue;
         }
 
-        for (offset, (visual, logical_to_visual)) in reorder_logical_line(&group_rows, shaper).into_iter().enumerate() {
-            apply_row(&mut out, &mut visual_cursor_col, group_start + offset, visual, &logical_to_visual);
+        for (offset, (visual, logical_to_visual)) in reorder_logical_line(&group_rows, shaper)
+            .into_iter()
+            .enumerate()
+        {
+            apply_row(
+                &mut out,
+                &mut visual_cursor_col,
+                group_start + offset,
+                visual,
+                &logical_to_visual,
+            );
         }
         r = group_end;
     }
