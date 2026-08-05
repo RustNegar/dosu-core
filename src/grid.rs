@@ -534,12 +534,10 @@ impl<'a> Perform for GridPerformer<'a> {
         match byte {
             b'\n' => self.grid.newline(false),
             b'\r' => self.grid.cursor.col = 0,
-            0x08 => {
-                // Backspace: move left only, do NOT erase -- erasure is a
-                // separate, explicit step.
-                if self.grid.cursor.col > 0 {
-                    self.grid.cursor.col -= 1;
-                }
+            // Backspace: move left only, do NOT erase -- erasure is a
+            // separate, explicit step.
+            0x08 if self.grid.cursor.col > 0 => {
+                self.grid.cursor.col -= 1;
             }
             _ => {}
         }
@@ -777,15 +775,11 @@ impl<'a> Perform for GridPerformer<'a> {
             // leave the cursor pinned at the last column instead of
             // auto-advancing, since their relative cursor moves assume no
             // wrap happened.
-            'h' if intermediates.contains(&b'?') => {
-                if p(0, 0) == 7 {
-                    self.grid.auto_wrap = true;
-                }
+            'h' if intermediates.contains(&b'?') && p(0, 0) == 7 => {
+                self.grid.auto_wrap = true;
             }
-            'l' if intermediates.contains(&b'?') => {
-                if p(0, 0) == 7 {
-                    self.grid.auto_wrap = false;
-                }
+            'l' if intermediates.contains(&b'?') && p(0, 0) == 7 => {
+                self.grid.auto_wrap = false;
             }
             _ => {}
         }
