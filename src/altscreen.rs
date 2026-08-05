@@ -61,7 +61,10 @@ pub struct AltScreenScanner {
 
 impl AltScreenScanner {
     pub fn new() -> Self {
-        AltScreenScanner { in_alt: false, carry: Vec::new() }
+        AltScreenScanner {
+            in_alt: false,
+            carry: Vec::new(),
+        }
     }
 
     pub fn in_alt_screen(&self) -> bool {

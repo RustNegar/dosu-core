@@ -48,5 +48,7 @@ fn dirs_next_config() -> Option<PathBuf> {
             return Some(PathBuf::from(x));
         }
     }
-    std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config"))
+    std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".config"))
 }

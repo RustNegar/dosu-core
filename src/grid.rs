@@ -120,7 +120,11 @@ impl Grid {
             cols,
             rows,
             cells: vec![Cell::default(); cols * rows],
-            cursor: Cursor { row: 0, col: 0, visible: true },
+            cursor: Cursor {
+                row: 0,
+                col: 0,
+                visible: true,
+            },
             pending_bold: false,
             pending_dim: false,
             pending_italic: false,
@@ -275,7 +279,10 @@ impl Grid {
     /// real terminal behavior. Per spec, the cursor also homes to (0,0).
     fn set_scroll_region(&mut self, top: usize, bottom: Option<usize>) {
         let top0 = top.saturating_sub(1);
-        let bottom0 = bottom.unwrap_or(self.rows).saturating_sub(1).min(self.rows.saturating_sub(1));
+        let bottom0 = bottom
+            .unwrap_or(self.rows)
+            .saturating_sub(1)
+            .min(self.rows.saturating_sub(1));
         if top0 < bottom0 {
             self.top_margin = top0;
             self.bottom_margin = bottom0;
@@ -373,7 +380,8 @@ impl Grid {
         }
         let start = top * self.cols;
         let end = (bottom + 1) * self.cols;
-        self.cells.copy_within(start..end - n * self.cols, start + n * self.cols);
+        self.cells
+            .copy_within(start..end - n * self.cols, start + n * self.cols);
         for c in &mut self.cells[start..start + n * self.cols] {
             *c = Cell::default();
         }
@@ -493,9 +501,10 @@ impl Grid {
         // wiping it, via the scroll_lines -> real-newline-replay machinery
         // in render.rs. Only counting up to the last non-blank row (not
         // full screen height) avoids flooding scrollback with empty lines.
-        if let Some(last_meaningful) = (0..self.rows).rev().find(|&r| {
-            self.row(r).iter().any(|c| !c.ch.is_whitespace())
-        }) {
+        if let Some(last_meaningful) = (0..self.rows)
+            .rev()
+            .find(|&r| self.row(r).iter().any(|c| !c.ch.is_whitespace()))
+        {
             self.scroll_lines += last_meaningful + 1;
         }
         self.cells = vec![Cell::default(); self.cols * self.rows];
@@ -583,7 +592,12 @@ impl<'a> Perform for GridPerformer<'a> {
         // Per ECMA-48, `0` and "absent" are equivalent for cursor-movement
         // params (A/B/C/D, H/f, r, S/T) -- both mean "use the default".
         let p = |i: usize, default: usize| -> usize {
-            match params.iter().nth(i).and_then(|p| p.first().copied()).map(|v| v as usize) {
+            match params
+                .iter()
+                .nth(i)
+                .and_then(|p| p.first().copied())
+                .map(|v| v as usize)
+            {
                 None | Some(0) => default,
                 Some(v) => v,
             }
@@ -616,7 +630,12 @@ impl<'a> Perform for GridPerformer<'a> {
             // DECSTBM - set scroll region (see `Grid::set_scroll_region`).
             'r' => {
                 let top = p(0, 1);
-                let bottom = match params.iter().nth(1).and_then(|g| g.first().copied()).map(|v| v as usize) {
+                let bottom = match params
+                    .iter()
+                    .nth(1)
+                    .and_then(|g| g.first().copied())
+                    .map(|v| v as usize)
+                {
                     None | Some(0) => None,
                     Some(v) => Some(v),
                 };
@@ -626,11 +645,13 @@ impl<'a> Perform for GridPerformer<'a> {
             // by n lines directly, independent of cursor position.
             'S' => {
                 let n = p(0, 1);
-                self.grid.scroll_region_up(self.grid.top_margin, self.grid.bottom_margin, n);
+                self.grid
+                    .scroll_region_up(self.grid.top_margin, self.grid.bottom_margin, n);
             }
             'T' => {
                 let n = p(0, 1);
-                self.grid.scroll_region_down(self.grid.top_margin, self.grid.bottom_margin, n);
+                self.grid
+                    .scroll_region_down(self.grid.top_margin, self.grid.bottom_margin, n);
             }
             'J' => match p(0, 0) {
                 2 | 3 => self.grid.erase_screen(),
@@ -692,8 +713,7 @@ impl<'a> Perform for GridPerformer<'a> {
                                 if let (Some(&r), Some(&g), Some(&b)) =
                                     (flat.get(i + 2), flat.get(i + 3), flat.get(i + 4))
                                 {
-                                    self.grid.pending_fg =
-                                        Color::Rgb(r as u8, g as u8, b as u8);
+                                    self.grid.pending_fg = Color::Rgb(r as u8, g as u8, b as u8);
                                 }
                                 i += 4;
                             }
@@ -712,8 +732,7 @@ impl<'a> Perform for GridPerformer<'a> {
                                 if let (Some(&r), Some(&g), Some(&b)) =
                                     (flat.get(i + 2), flat.get(i + 3), flat.get(i + 4))
                                 {
-                                    self.grid.pending_bg =
-                                        Color::Rgb(r as u8, g as u8, b as u8);
+                                    self.grid.pending_bg = Color::Rgb(r as u8, g as u8, b as u8);
                                 }
                                 i += 4;
                             }
@@ -780,7 +799,10 @@ impl<'a> Perform for GridPerformer<'a> {
 /// callers (the CLI's PTY loop) must forward it to the child's stdin, not
 /// to our own stdout.
 pub fn feed(parser: &mut vte::Parser, grid: &mut Grid, bytes: &[u8]) -> Vec<u8> {
-    let mut performer = GridPerformer { grid, responses: Vec::new() };
+    let mut performer = GridPerformer {
+        grid,
+        responses: Vec::new(),
+    };
     for &b in bytes {
         parser.advance(&mut performer, b);
     }
@@ -804,7 +826,10 @@ mod tests {
         feed_str(&mut grid, "\x1b[?7l"); // disable auto-wrap
         feed_str(&mut grid, "abcdeXYZ"); // 8 chars into a 5-col row
         assert_eq!(grid.cursor.row, 0, "must stay on row 0, not wrap to row 1");
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>(), "abcdZ");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>(),
+            "abcdZ"
+        );
     }
 
     #[test]
@@ -822,7 +847,10 @@ mod tests {
         feed_str(&mut grid, "abcdefgh");
         feed_str(&mut grid, "\x1b[1;3H"); // cursor to 'c' (row 1, col 3, 1-indexed)
         feed_str(&mut grid, "\x1b[2P"); // delete 'c' and 'd'
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>(), "abefgh    ");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>(),
+            "abefgh    "
+        );
     }
 
     #[test]
@@ -830,7 +858,10 @@ mod tests {
         let mut grid = Grid::new(10, 2);
         feed_str(&mut grid, "abcdef");
         feed_str(&mut grid, "\x1b[1;2H\x1b[P"); // bare CSI P == delete 1
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>(), "acdef     ");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>(),
+            "acdef     "
+        );
     }
 
     #[test]
@@ -838,7 +869,10 @@ mod tests {
         let mut grid = Grid::new(10, 2);
         feed_str(&mut grid, "abcdef");
         feed_str(&mut grid, "\x1b[1;2H\x1b[2@"); // insert 2 blanks after 'a'
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>(), "a  bcdef  ");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>(),
+            "a  bcdef  "
+        );
     }
 
     #[test]
@@ -846,7 +880,10 @@ mod tests {
         let mut grid = Grid::new(5, 2);
         feed_str(&mut grid, "abcde");
         feed_str(&mut grid, "\x1b[1;1H\x1b[2@");
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>(), "  abc");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>(),
+            "  abc"
+        );
     }
 
     #[test]
@@ -856,7 +893,10 @@ mod tests {
         feed_str(&mut grid, "abcde"); // fills row 0 exactly, no overflow yet
         feed_str(&mut grid, "\x1b[?7h"); // re-enable
         feed_str(&mut grid, "X");
-        assert_eq!(grid.cursor.row, 1, "wrap must resume once DECAWM is back on");
+        assert_eq!(
+            grid.cursor.row, 1,
+            "wrap must resume once DECAWM is back on"
+        );
     }
 
     #[test]
@@ -876,7 +916,11 @@ mod tests {
         let mut grid = Grid::new(20, 50); // tall "screen", short output
         feed_str(&mut grid, "line one\r\nline two\r\nline three\r\n");
         feed_str(&mut grid, "\x1b[2J"); // clear
-        assert_eq!(grid.take_scroll_lines(), 3, "must count only up to the last non-blank row, not all 50");
+        assert_eq!(
+            grid.take_scroll_lines(),
+            3,
+            "must count only up to the last non-blank row, not all 50"
+        );
     }
 
     #[test]
@@ -887,7 +931,11 @@ mod tests {
         let mut grid = Grid::new(20, 10);
         feed_str(&mut grid, "\x1b[48;5;236m                    \x1b[0m"); // a colored blank row, no text at all
         feed_str(&mut grid, "\x1b[2J");
-        assert_eq!(grid.take_scroll_lines(), 0, "a row with only colored whitespace must not count as meaningful content");
+        assert_eq!(
+            grid.take_scroll_lines(),
+            0,
+            "a row with only colored whitespace must not count as meaningful content"
+        );
     }
 
     #[test]
@@ -906,9 +954,18 @@ mod tests {
         // Cursor now at end of row 2 (0-indexed), col 5. Move to row 1 col 2
         // and erase from there to end of screen.
         feed_str(&mut grid, "\x1b[2;3H\x1b[0J");
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>(), "AAAAA");
-        assert_eq!(grid.row(1).iter().map(|c| c.ch).collect::<String>(), "BB   ");
-        assert_eq!(grid.row(2).iter().map(|c| c.ch).collect::<String>(), "     ");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>(),
+            "AAAAA"
+        );
+        assert_eq!(
+            grid.row(1).iter().map(|c| c.ch).collect::<String>(),
+            "BB   "
+        );
+        assert_eq!(
+            grid.row(2).iter().map(|c| c.ch).collect::<String>(),
+            "     "
+        );
     }
 
     #[test]
@@ -939,7 +996,10 @@ mod tests {
         let mut grid = Grid::new(5, 2);
         feed_str(&mut grid, "\x1b[31mhello");
         feed_str(&mut grid, "\x1bc"); // ESC c = RIS
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>(), "     ");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>(),
+            "     "
+        );
         assert_eq!(grid.cursor.row, 0);
         assert_eq!(grid.cursor.col, 0);
     }
@@ -982,7 +1042,10 @@ mod tests {
         let mut grid = Grid::new(20, 3);
         // Powerlevel10k-style truecolor bg + fg segment, e.g. a directory
         // segment: bold white text on a blue truecolor background.
-        feed_str(&mut grid, "\x1b[1;38;2;255;255;255;48;2;30;60;200m~/code\x1b[0m");
+        feed_str(
+            &mut grid,
+            "\x1b[1;38;2;255;255;255;48;2;30;60;200m~/code\x1b[0m",
+        );
         let cell = grid.row(0)[0];
         assert!(cell.bold);
         assert_eq!(cell.fg, Color::Rgb(255, 255, 255));
@@ -1023,7 +1086,10 @@ mod tests {
         let mut parser = vte::Parser::new();
         // Print 'x', then CSI 4b => repeat it 4 more times => "xxxxx".
         feed(&mut parser, &mut grid, b"x\x1b[4b");
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>(), "xxxxx     ");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>(),
+            "xxxxx     "
+        );
     }
 
     #[test]
@@ -1055,10 +1121,16 @@ mod tests {
         // row1="fghij" -- row1 must be flagged as a continuation.
         feed(&mut parser, &mut grid, b"abcdefghij");
         assert!(!grid.is_row_wrapped(0), "first row is never a continuation");
-        assert!(grid.is_row_wrapped(1), "row filled purely by auto-wrap must be flagged");
+        assert!(
+            grid.is_row_wrapped(1),
+            "row filled purely by auto-wrap must be flagged"
+        );
         // A real CRLF starts a fresh logical line -- must NOT be flagged.
         feed_str(&mut grid, "\r\nklmno");
-        assert!(!grid.is_row_wrapped(2), "a real \\r\\n starts a new logical line, not a continuation");
+        assert!(
+            !grid.is_row_wrapped(2),
+            "a real \\r\\n starts a new logical line, not a continuation"
+        );
     }
 
     #[test]
@@ -1069,7 +1141,10 @@ mod tests {
         grid.cursor.row = 1;
         grid.cursor.col = 0;
         feed_str(&mut grid, "\x1b[2K"); // EL 2: erase entire current line
-        assert!(!grid.is_row_wrapped(1), "a fully-erased row's wrap flag must be cleared");
+        assert!(
+            !grid.is_row_wrapped(1),
+            "a fully-erased row's wrap flag must be cleared"
+        );
     }
 
     #[test]
@@ -1085,7 +1160,10 @@ mod tests {
         // One more real newline scrolls everything up by one: old row1
         // (wrapped) becomes row0, old row2 (not wrapped) becomes row1.
         feed_str(&mut grid, "\r\nwwwww");
-        assert!(grid.is_row_wrapped(0), "the wrapped row's flag must scroll up with its content");
+        assert!(
+            grid.is_row_wrapped(0),
+            "the wrapped row's flag must scroll up with its content"
+        );
         assert!(!grid.is_row_wrapped(1));
     }
 
@@ -1095,7 +1173,10 @@ mod tests {
         feed_str(&mut grid, "abcdefghij");
         assert!(grid.is_row_wrapped(1));
         grid.resize(20, 4);
-        assert!(!grid.is_row_wrapped(1), "resize has no reflow, so old wrap flags no longer describe the clipped/padded content");
+        assert!(
+            !grid.is_row_wrapped(1),
+            "resize has no reflow, so old wrap flags no longer describe the clipped/padded content"
+        );
     }
 
     #[test]
@@ -1110,12 +1191,19 @@ mod tests {
 
         grid.resize(20, 10); // identical dimensions -- must be a no-op
 
-        assert!(grid.is_row_wrapped(1), "wrap flags must survive a same-size resize");
+        assert!(
+            grid.is_row_wrapped(1),
+            "wrap flags must survive a same-size resize"
+        );
         // Confirm the DECSTBM region is still restricted (not reset to
         // full-screen) by checking that a scroll at the bottom margin
         // does NOT count as a full-page scroll.
         feed_str(&mut grid, "\x1b[7;1H\r\nX"); // move to bottom margin, force a scroll within it
-        assert_eq!(grid.take_scroll_lines(), 0, "a scroll confined to the DECSTBM region must not count as a full-page scroll");
+        assert_eq!(
+            grid.take_scroll_lines(),
+            0,
+            "a scroll confined to the DECSTBM region must not count as a full-page scroll"
+        );
     }
 }
 
@@ -1146,7 +1234,11 @@ mod repro_tests {
         feed_str(&mut grid, "\x1b[1B"); // CUD: down 1 -> row1, col3
         assert_eq!((grid.cursor.row, grid.cursor.col), (1, 3));
         feed_str(&mut grid, "\x1bM"); // RI: should go back up -> row0
-        assert_eq!((grid.cursor.row, grid.cursor.col), (0, 3), "Reverse Index (ESC M) must move the cursor back up");
+        assert_eq!(
+            (grid.cursor.row, grid.cursor.col),
+            (0, 3),
+            "Reverse Index (ESC M) must move the cursor back up"
+        );
     }
 
     #[test]
@@ -1157,19 +1249,37 @@ mod repro_tests {
         feed_str(&mut grid, "PROMPT>\r\n"); // row0
         feed_str(&mut grid, "typed cmd\r\n"); // row1
         feed_str(&mut grid, "\x1b[3;6r"); // DECSTBM: region = rows 2..=5 (0-indexed)
-        // DECSTBM also homes the cursor to (0,0) per spec.
+                                          // DECSTBM also homes the cursor to (0,0) per spec.
         assert_eq!((grid.cursor.row, grid.cursor.col), (0, 0));
         grid.cursor.row = 5; // move to the region's bottom margin
         feed_str(&mut grid, "\x1bD"); // IND at bottom margin -> scroll region up
-        assert_eq!(grid.cursor.row, 5, "cursor should stay pinned at the bottom margin");
+        assert_eq!(
+            grid.cursor.row, 5,
+            "cursor should stay pinned at the bottom margin"
+        );
         // Rows above the region (the real prompt) must be untouched.
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>().trim(), "PROMPT>");
-        assert_eq!(grid.row(1).iter().map(|c| c.ch).collect::<String>().trim(), "typed cmd");
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>().trim(),
+            "PROMPT>"
+        );
+        assert_eq!(
+            grid.row(1).iter().map(|c| c.ch).collect::<String>().trim(),
+            "typed cmd"
+        );
         grid.cursor.row = 2; // top margin
         feed_str(&mut grid, "\x1bM"); // RI at top margin -> scroll region down
-        assert_eq!(grid.cursor.row, 2, "cursor should stay pinned at the top margin");
-        assert_eq!(grid.row(0).iter().map(|c| c.ch).collect::<String>().trim(), "PROMPT>");
-        assert_eq!(grid.row(1).iter().map(|c| c.ch).collect::<String>().trim(), "typed cmd");
+        assert_eq!(
+            grid.cursor.row, 2,
+            "cursor should stay pinned at the top margin"
+        );
+        assert_eq!(
+            grid.row(0).iter().map(|c| c.ch).collect::<String>().trim(),
+            "PROMPT>"
+        );
+        assert_eq!(
+            grid.row(1).iter().map(|c| c.ch).collect::<String>().trim(),
+            "typed cmd"
+        );
     }
 
     #[test]
@@ -1183,7 +1293,11 @@ mod repro_tests {
         feed_str(&mut grid, "\x1b[136`");
         assert_eq!((grid.cursor.row, grid.cursor.col), (5, 135));
         feed_str(&mut grid, "\x1b[3d");
-        assert_eq!((grid.cursor.row, grid.cursor.col), (2, 135), "VPA must move the row and leave the column alone");
+        assert_eq!(
+            (grid.cursor.row, grid.cursor.col),
+            (2, 135),
+            "VPA must move the row and leave the column alone"
+        );
     }
 
     #[test]
@@ -1194,21 +1308,32 @@ mod repro_tests {
         let mut grid = Grid::new(200, 24);
         grid.cursor.row = 0;
         grid.cursor.col = 0;
-        feed_str(&mut grid, "\x1b[1B\x1b[70G\u{2502} \x1b[136G \u{2502}\x1b[1B\x1b[70G\u{2502} \x1b[136G \u{2502}");
+        feed_str(
+            &mut grid,
+            "\x1b[1B\x1b[70G\u{2502} \x1b[136G \u{2502}\x1b[1B\x1b[70G\u{2502} \x1b[136G \u{2502}",
+        );
         // Row 1 (0-indexed) should have the left border at column 69 and
         // the right border at column 136 (0-indexed 135/end).
         let row1: String = grid.row(1).iter().map(|c| c.ch).collect();
-        assert_eq!(row1.chars().nth(69), Some('│'), "left preview border must land at column 70");
+        assert_eq!(
+            row1.chars().nth(69),
+            Some('│'),
+            "left preview border must land at column 70"
+        );
         let row2: String = grid.row(2).iter().map(|c| c.ch).collect();
-        assert_eq!(row2.chars().nth(69), Some('│'), "left preview border must land at column 70 on the next row too");
+        assert_eq!(
+            row2.chars().nth(69),
+            Some('│'),
+            "left preview border must land at column 70 on the next row too"
+        );
     }
 
     #[test]
     fn decstbm_invalid_range_resets_to_full_screen() {
         let mut grid = Grid::new(10, 6);
         feed_str(&mut grid, "\x1b[5;2r"); // bottom < top: invalid
-        // Should fall back to full-screen scrolling: IND at the last row
-        // scrolls the whole screen, not nothing.
+                                          // Should fall back to full-screen scrolling: IND at the last row
+                                          // scrolls the whole screen, not nothing.
         grid.cursor.row = 5;
         feed_str(&mut grid, "x");
         feed_str(&mut grid, "\x1bD");
@@ -1257,14 +1382,20 @@ mod repro_tests {
         grid.cursor.row = 5;
         grid.cursor.col = 0;
         feed_str(&mut grid, "│ سلام │"); // fzf-style row containing Persian text
-        assert!(grid.is_row_structured(5), "row written under a restricted region must be marked structured");
+        assert!(
+            grid.is_row_structured(5),
+            "row written under a restricted region must be marked structured"
+        );
         // Resetting to a full-screen region and writing ordinary prose
         // again must clear the flag.
         feed_str(&mut grid, "\x1b[r"); // CSI r with no params = full screen
         grid.cursor.row = 5;
         grid.cursor.col = 0;
         feed_str(&mut grid, "more prose");
-        assert!(!grid.is_row_structured(5), "flag must clear once control returns to normal rendering");
+        assert!(
+            !grid.is_row_structured(5),
+            "flag must clear once control returns to normal rendering"
+        );
     }
 
     #[test]
@@ -1279,7 +1410,10 @@ mod repro_tests {
         let visual = crate::bidi::reorder_grid(&grid, &crate::bidi::NoopShaper);
         let logical: String = grid.row(5).iter().map(|c| c.ch).collect();
         let visual_row: String = visual.row(5).iter().map(|c| c.ch).collect();
-        assert_eq!(logical.trim_end(), visual_row.trim_end(),
-            "a structured row must pass through bidi unchanged");
+        assert_eq!(
+            logical.trim_end(),
+            visual_row.trim_end(),
+            "a structured row must pass through bidi unchanged"
+        );
     }
 }
