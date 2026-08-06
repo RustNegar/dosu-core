@@ -521,6 +521,121 @@ fn is_rtl_candidate(c: char) -> bool {
     use unicode_bidi::BidiClass::*;
     matches!(unicode_bidi::bidi_class(c), AL | R | RLE | RLO | RLI | AN)
 }
+/// Reorders an entire grid, row by row, into a new visual-order grid, and
+/// translates the cursor's logical column into the matching visual column.
+pub fn reorder_grid(grid: &crate::grid::Grid, shaper: &dyn Shaper) -> crate::grid::Grid {
+    let mut out = crate::grid::Grid::new(grid.cols, grid.rows);
+    let mut visual_cursor_col = grid.cursor.col;
+
+    // Applies one row's reorder result to `out`, shared by every branch below.
+    let apply_row = |out: &mut crate::grid::Grid,
+                     visual_cursor_col: &mut usize,
+                     row_idx: usize,
+                     visual: Vec<Cell>,
+                     logical_to_visual: &[usize]| {
+        if row_idx == grid.cursor.row {
+            *visual_cursor_col = logical_to_visual
+                .get(grid.cursor.col)
+                .copied()
+                .unwrap_or(grid.cursor.col);
+        }
+        for (c, cell) in visual.into_iter().enumerate() {
+            out.set_cell(row_idx, c, cell);
+        }
+    };
+
+    let mut r = 0;
+    while r < grid.rows {
+        // A row written under a restricted DECSTBM scroll region belongs to
+        // an inline TUI widget's layout, not prose -- copy it through
+        // unchanged. See `Grid::structured_rows`.
+        if grid.is_row_structured(r) {
+            for (c, cell) in grid.row(r).iter().copied().enumerate() {
+                out.set_cell(r, c, cell);
+            }
+            if r == grid.cursor.row {
+                visual_cursor_col = grid.cursor.col;
+            }
+            r += 1;
+            continue;
+        }
+
+        // Group row `r` with its DECAWM auto-wrap continuations
+        // (`Grid::wrapped_rows`) into one logical prose line, reordered as
+        // a single UAX #9 paragraph (see `reorder_logical_line`). A
+        // structured row ends a group.
+        let group_start = r;
+        let mut group_end = r + 1;
+        while group_end < grid.rows
+            && grid.is_row_wrapped(group_end)
+            && !grid.is_row_structured(group_end)
+        {
+            group_end += 1;
+        }
+
+        if group_end - group_start == 1 {
+            let (visual, logical_to_visual) = reorder_row(grid.row(r), shaper);
+            apply_row(
+                &mut out,
+                &mut visual_cursor_col,
+                r,
+                visual,
+                &logical_to_visual,
+            );
+            r += 1;
+            continue;
+        }
+
+        let group_rows: Vec<&[Cell]> = (group_start..group_end).map(|i| grid.row(i)).collect();
+
+        // v1 scope limit: joining rows only makes sense for single-
+        // column prose. If any row in the group actually has more than
+        // one `split_fields` field (a columnar TUI row, e.g. fzf's list
+        // + preview panes, happening to also be DECAWM-wrapped), fall
+        // back to reordering every row in the group independently --
+        // the existing, already-correct per-row behavior.
+        let has_multi_field_row = group_rows.iter().any(|cells| {
+            let content_len = cells
+                .iter()
+                .rposition(|c| *c != Cell::default())
+                .map_or(0, |i| i + 1);
+            split_fields(&cells[..content_len]).len() > 1
+        });
+
+        if has_multi_field_row {
+            for row_idx in group_start..group_end {
+                let (visual, logical_to_visual) = reorder_row(grid.row(row_idx), shaper);
+                apply_row(
+                    &mut out,
+                    &mut visual_cursor_col,
+                    row_idx,
+                    visual,
+                    &logical_to_visual,
+                );
+            }
+            r = group_end;
+            continue;
+        }
+
+        for (offset, (visual, logical_to_visual)) in reorder_logical_line(&group_rows, shaper)
+            .into_iter()
+            .enumerate()
+        {
+            apply_row(
+                &mut out,
+                &mut visual_cursor_col,
+                group_start + offset,
+                visual,
+                &logical_to_visual,
+            );
+        }
+        r = group_end;
+    }
+
+    out.cursor = grid.cursor;
+    out.cursor.col = visual_cursor_col;
+    out
+}
 
 #[cfg(test)]
 mod tests {
@@ -803,120 +918,4 @@ mod tests {
         // the reordered Persian text.
         assert_eq!(visual.cursor.col, 5);
     }
-}
-
-/// Reorders an entire grid, row by row, into a new visual-order grid, and
-/// translates the cursor's logical column into the matching visual column.
-pub fn reorder_grid(grid: &crate::grid::Grid, shaper: &dyn Shaper) -> crate::grid::Grid {
-    let mut out = crate::grid::Grid::new(grid.cols, grid.rows);
-    let mut visual_cursor_col = grid.cursor.col;
-
-    // Applies one row's reorder result to `out`, shared by every branch below.
-    let apply_row = |out: &mut crate::grid::Grid,
-                     visual_cursor_col: &mut usize,
-                     row_idx: usize,
-                     visual: Vec<Cell>,
-                     logical_to_visual: &[usize]| {
-        if row_idx == grid.cursor.row {
-            *visual_cursor_col = logical_to_visual
-                .get(grid.cursor.col)
-                .copied()
-                .unwrap_or(grid.cursor.col);
-        }
-        for (c, cell) in visual.into_iter().enumerate() {
-            out.set_cell(row_idx, c, cell);
-        }
-    };
-
-    let mut r = 0;
-    while r < grid.rows {
-        // A row written under a restricted DECSTBM scroll region belongs to
-        // an inline TUI widget's layout, not prose -- copy it through
-        // unchanged. See `Grid::structured_rows`.
-        if grid.is_row_structured(r) {
-            for (c, cell) in grid.row(r).iter().copied().enumerate() {
-                out.set_cell(r, c, cell);
-            }
-            if r == grid.cursor.row {
-                visual_cursor_col = grid.cursor.col;
-            }
-            r += 1;
-            continue;
-        }
-
-        // Group row `r` with its DECAWM auto-wrap continuations
-        // (`Grid::wrapped_rows`) into one logical prose line, reordered as
-        // a single UAX #9 paragraph (see `reorder_logical_line`). A
-        // structured row ends a group.
-        let group_start = r;
-        let mut group_end = r + 1;
-        while group_end < grid.rows
-            && grid.is_row_wrapped(group_end)
-            && !grid.is_row_structured(group_end)
-        {
-            group_end += 1;
-        }
-
-        if group_end - group_start == 1 {
-            let (visual, logical_to_visual) = reorder_row(grid.row(r), shaper);
-            apply_row(
-                &mut out,
-                &mut visual_cursor_col,
-                r,
-                visual,
-                &logical_to_visual,
-            );
-            r += 1;
-            continue;
-        }
-
-        let group_rows: Vec<&[Cell]> = (group_start..group_end).map(|i| grid.row(i)).collect();
-
-        // v1 scope limit: joining rows only makes sense for single-
-        // column prose. If any row in the group actually has more than
-        // one `split_fields` field (a columnar TUI row, e.g. fzf's list
-        // + preview panes, happening to also be DECAWM-wrapped), fall
-        // back to reordering every row in the group independently --
-        // the existing, already-correct per-row behavior.
-        let has_multi_field_row = group_rows.iter().any(|cells| {
-            let content_len = cells
-                .iter()
-                .rposition(|c| *c != Cell::default())
-                .map_or(0, |i| i + 1);
-            split_fields(&cells[..content_len]).len() > 1
-        });
-
-        if has_multi_field_row {
-            for row_idx in group_start..group_end {
-                let (visual, logical_to_visual) = reorder_row(grid.row(row_idx), shaper);
-                apply_row(
-                    &mut out,
-                    &mut visual_cursor_col,
-                    row_idx,
-                    visual,
-                    &logical_to_visual,
-                );
-            }
-            r = group_end;
-            continue;
-        }
-
-        for (offset, (visual, logical_to_visual)) in reorder_logical_line(&group_rows, shaper)
-            .into_iter()
-            .enumerate()
-        {
-            apply_row(
-                &mut out,
-                &mut visual_cursor_col,
-                group_start + offset,
-                visual,
-                &logical_to_visual,
-            );
-        }
-        r = group_end;
-    }
-
-    out.cursor = grid.cursor;
-    out.cursor.col = visual_cursor_col;
-    out
 }
