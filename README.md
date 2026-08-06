@@ -59,6 +59,19 @@ renderer.render(&mut stdout, &visual)?;
 
 The bidi engine is script-driven (UAX #9 via `unicode-bidi`), not locale-driven: any text whose Unicode bidi class is `AL`, `R`, `RLE`, `RLO`, `RLI`, or `AN` is treated as RTL. This covers Arabic, Persian, and Hebrew without script-specific logic.
 
+## Fuzzing
+
+`bidi::reorder_grid` is fuzzed with `cargo-fuzz` (libFuzzer). The targets in `fuzz/fuzz_targets/` drive real fuzzer bytes through the same `vte::Parser -> Grid -> reorder_grid` pipeline the actual pty pipeline uses (never a hand-constructed `Grid`), covering both valid-UTF-8 and raw/garbage-byte input, plus multi-row DECAWM auto-wrap grouping.
+
+```sh
+cargo install cargo-fuzz
+cargo fuzz run reorder_grid            # valid-UTF-8 input
+cargo fuzz run reorder_grid_lossy      # raw / possibly-invalid-UTF-8 input
+cargo fuzz run reorder_grid_multiline  # multi-row / wrapped-line input
+```
+
+Fuzzing requires the nightly toolchain (`cargo-fuzz` installs and uses it automatically). CI runs a bounded 60-second smoke test per target on every push to `main`; it's a regression check, not continuous fuzzing, so run the commands above locally for longer sessions when working on `bidi.rs`.
+
 ## Requirements
 
 - Rust 1.70 or higher

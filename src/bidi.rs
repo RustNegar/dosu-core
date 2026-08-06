@@ -322,6 +322,7 @@ fn reorder_field_with_bidi_info(
 
     let mut result: Vec<Cell> = Vec::with_capacity(content.len());
     let mut logical_to_visual: Vec<usize> = (0..content.len()).collect();
+    let mut placed = vec![false; content.len()];
 
     for run in visual_runs {
         let run_level = levels[run.start];
@@ -347,7 +348,36 @@ fn reorder_field_with_bidi_info(
         for (idx, ch) in run_cell_indices.into_iter().zip(shaped) {
             logical_to_visual[idx] = result.len();
             result.push(Cell { ch, ..content[idx] });
+            placed[idx] = true;
         }
+    }
+
+    // UAX #9 Rule X9: `unicode-bidi` may resolve boundary-neutral/format
+    // characters (e.g. ZWJ, ZWNJ) without assigning them to any visual
+    // run. Silently dropping them here would desync `result.len()` from
+    // `content.len()`, which panics the caller's `copy_from_slice`
+    // (`reorder_row`/`reorder_logical_line` both assume a same-length
+    // result). Splice each uncovered cell back in immediately after its
+    // nearest preceding placed neighbor -- a safe, crash-free
+    // approximation of X9's "invisible" treatment that guarantees the
+    // output is always exactly `content.len()` cells, in a stable
+    // position close to where it logically belongs.
+    for i in 0..content.len() {
+        if placed[i] {
+            continue;
+        }
+        let insert_at = (0..i)
+            .rev()
+            .find_map(|j| placed[j].then(|| logical_to_visual[j] + 1))
+            .unwrap_or(0);
+        result.insert(insert_at, content[i]);
+        for v in logical_to_visual.iter_mut() {
+            if *v >= insert_at {
+                *v += 1;
+            }
+        }
+        logical_to_visual[i] = insert_at;
+        placed[i] = true;
     }
 
     (result, logical_to_visual)
