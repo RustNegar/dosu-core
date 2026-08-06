@@ -1,0 +1,43 @@
+[package]
+name = "dosu-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vte = "0.13"
+
+[dependencies.dosu-core]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "reorder_grid"
+path = "fuzz_targets/reorder_grid.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "reorder_grid_lossy"
+path = "fuzz_targets/reorder_grid_lossy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "reorder_grid_multiline"
+path = "fuzz_targets/reorder_grid_multiline.rs"
+test = false
+doc = false
+bench = false
