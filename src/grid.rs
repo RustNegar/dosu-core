@@ -385,11 +385,21 @@ impl Grid {
         for c in &mut self.cells[start..start + n * self.cols] {
             *c = Cell::default();
         }
-        self.structured_rows.copy_within(top..=bottom - n, top + n);
+        // self.structured_rows.copy_within(top..=bottom - n, top + n);
+        // for flag in &mut self.structured_rows[top..top + n] {
+        //     *flag = false;
+        // }
+        // self.wrapped_rows.copy_within(top..=bottom - n, top + n);
+        // for flag in &mut self.wrapped_rows[top..top + n] {
+        //     *flag = false;
+        // }
+        if n < region_rows {
+            self.structured_rows.copy_within(top..=bottom - n, top + n);
+            self.wrapped_rows.copy_within(top..=bottom - n, top + n);
+        }
         for flag in &mut self.structured_rows[top..top + n] {
             *flag = false;
         }
-        self.wrapped_rows.copy_within(top..=bottom - n, top + n);
         for flag in &mut self.wrapped_rows[top..top + n] {
             *flag = false;
         }
