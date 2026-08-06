@@ -15,6 +15,16 @@ pub struct Config {
     /// Log level for tracing output (off, error, warn, info, debug, trace).
     /// Passed to `tracing_subscriber::EnvFilter` by consumers.
     pub log_level: String,
+    /// Whether `dosu` should periodically check GitHub Releases for a
+    /// newer version and print a notice on startup (oh-my-zsh style).
+    /// The check is always non-blocking and always skipped if
+    /// `DOSU_DISABLE_UPDATE_CHECK` is set, regardless of this field.
+    pub update_check_enabled: bool,
+    /// How many days to wait between update checks. A check that ran
+    /// within this window is skipped entirely (no network call); the
+    /// cached last-known version is still compared and the notice still
+    /// shown if it's newer than the running binary.
+    pub update_check_interval_days: u64,
 }
 
 impl Default for Config {
@@ -23,6 +33,8 @@ impl Default for Config {
             shell: None,
             languages: vec!["fa".into(), "ar".into()],
             log_level: "warn".into(),
+            update_check_enabled: true,
+            update_check_interval_days: 7,
         }
     }
 }
