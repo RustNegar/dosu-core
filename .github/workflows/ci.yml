@@ -19,3 +19,31 @@ jobs:
       - run: cargo test --all-features
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
+
+  fuzz-smoke-test:
+    name: bounded fuzz smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            fuzz -> target
+      - run: cargo install cargo-fuzz --locked
+      # Short, bounded run per target -- this is a regression smoke test
+      # that catches new crashes early, not a continuous-fuzzing setup.
+      # No corpus is persisted between runs.
+      - name: fuzz reorder_grid
+        run: cargo fuzz run reorder_grid -- -max_total_time=60
+      - name: fuzz reorder_grid_lossy
+        run: cargo fuzz run reorder_grid_lossy -- -max_total_time=60
+      - name: fuzz reorder_grid_multiline
+        run: cargo fuzz run reorder_grid_multiline -- -max_total_time=60
+      - name: upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-artifacts
+          path: fuzz/artifacts/
